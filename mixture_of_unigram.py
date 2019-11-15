@@ -1,121 +1,155 @@
-import json
 import numpy as np
-from nltk.stem.porter import PorterStemmer
-from sklearn.feature_extraction.text import CountVectorizer
-import unicodedata
-import re
-def read_file(file_name):
-	with open(file_name,"r") as f:
-	  aaai=json.load(f)
-
-	title_list=[]
-	abstract_list=[]
-	for i,title_and_abstract in aaai.items():
-		title_list+=[title_and_abstract["title"]]
-		abstract_list+=[title_and_abstract['abstract']]
-
-	abstract_list=[unicodedata.normalize("NFC",i) for i in abstract_list]
-	abstract_list=[i.lower() for i in abstract_list]
-	abstract_list=[re.sub("[,.'?!:;]"," ",i) for i in abstract_list]
-	abstract_list=[re.sub("[ ]+"," ",i) for i in abstract_list]
-	p_stemmer = PorterStemmer()
-	abstract_list = [" ".join([p_stemmer.stem(t) for t in i.split()]) for i in abstract_list]
-
-	#print("print",abstract_list[:10])
-	vectorizer = CountVectorizer(stop_words="english",min_df=5,max_df=200)
-	word_matrix = vectorizer.fit_transform(abstract_list)
-	show_word = vectorizer.get_feature_names()
-	print("# of words",len(show_word))
-	return word_matrix.toarray(),show_word
 
 class mixture_of_unigram():
-	def __init__(self,word_matrix,show_word,topic_num=10):
-		#word_matrix is the one returned by sklearn.vectorizer()
+	def __init__(self,show_word,topic_num=10,fix_labeled_doc=True,alpha=2):
 		self.topic_num=topic_num
-		self.word_matrix=word_matrix
+		#show_word is a list of string(word) corresponding to word matrixes passed in.
 		self.show_word=show_word
-		self.doc_num=word_matrix.shape[0]
-		self.word_num=word_matrix.shape[1]
-		
-		#randomly initialize topic to word distribution
-		self.topic2word=np.random.uniform(0,1,[self.topic_num,self.word_num])
-		self.topic2word=self.topic2word/(self.topic2word.sum(axis=1,keepdims=True)+10**-200)
-		#randomly initialize topic sampling probability
-		self.topic=np.random.uniform(0,1,[self.topic_num])
-		self.topic=self.topic/(self.topic.sum()+10**-200)
+		self.word_num=len(show_word)
+		self.alpha=alpha
+		self.fix_labeled_doc=fix_labeled_doc #if True topic for labeled document would not change.
 
+		self.labeled_word_matrix=None
+		self.labeled_doc2topic=None #Z in the original paper.
+		self.word_matrix=None	#unlabeled document.
+		self.doc2topic=None		#unlabeled document. Z in the original paper.
+
+		#randomly initialize topic to word distribution, 10**-200 to avoid divide by 0
+		self.topic2word=np.random.uniform(10**-200,1,[self.topic_num,self.word_num])
+		self.topic2word=self.topic2word/self.topic2word.sum(axis=1,keepdims=True)
+
+		#randomly initialize topic sampling probability
+		self.topic=np.random.uniform(10**-200,1,[self.topic_num])
+		self.topic=self.topic/self.topic.sum()
+
+	def add_labeled_doc(self,word_matrix,topics):
+		#word_matrix is the same as the one returned by sklearn.vectorizer()
+		#topics is a list of int(topic index).
+		
+		#create one hot label, which means we set the expectation as 1.
+		topics=np.array(topics)
+		doc2topic=np.zeros([word_matrix.shape[0],self.topic_num])
+		doc2topic[np.arange(word_matrix.shape[0]),topics]=1
+		
+		if self.labeled_word_matrix is None:
+			self.labeled_word_matrix=word_matrix.copy()
+			self.labeled_doc2topic=doc2topic
+		else:
+			assert(word_matrix.shape[1]==self.labeled_word_matrix.shape[1])
+			self.labeled_word_matrix=np.concatenate((self.labeled_word_matrix,word_matrix),axis=0)
+			self.labeled_doc2topic=np.concatenate((self.labeled_doc2topic,doc2topic),axis=0)
+
+	def add_unlabeled_doc(self,word_matrix):
+		#word_matrix is the same as the one returned by sklearn.vectorizer()
+	
+		if self.word_matrix is None:
+			self.word_matrix=word_matrix.copy()
+		else:
+			assert(word_matrix.shape[1]==self.labeled_word_matrix.shape[1])
+			self.labeled_word_matrix=np.concatenate((self.labeled_word_matrix,word_matrix),axis=0)
 
 	def train(self,iteration=10):
 		for i in range(iteration):
-			doc2topic=self.__expectation(self.word_matrix)
-			self.__maximization(doc2topic)
+			if self.labeled_word_matrix is None and self.word_matrix is None:
+				#don't need to do anything
+				return
+			elif self.labeled_word_matrix is not None and self.word_matrix is None:
+				#only self.labeled_word_matrix has document in it. Analytic solution. Only need to do one time.
 
-	def __maximization(self,doc2topic):
-		#doc2topic size doc_num*topic
+				self.__maximization(self.labeled_word_matrix,self.labeled_doc2topic)
+				if self.fix_labeled_doc:
+					return
+				else:
+					self.labeled_doc2topic=self.__expectation(self.labeled_word_matrix)
 
-		assert((self.doc_num+self.topic_num)!=0)
-		self.topic=(doc2topic.sum(axis=0)+1)/(self.doc_num+self.topic_num)
-		doc2word=self.word_matrix.reshape(self.doc_num,-1,self.word_num)
-		#size topic*word
-		self.topic2word=1+(doc2topic.reshape(self.doc_num,self.topic_num,-1)*doc2word).sum(axis=0)
+	
+			elif self.labeled_word_matrix is None and self.word_matrix is not None:
+				#only unlabeled self.word_matrix has document. Unsupervised learning might not do well.
+				self.doc2topic=self.__expecation(self.word_matrix)
+				self.__maximization(self.word_matrix,self.doc2topic)
+	
+	
+			else:
+				#Both have document.
+		
+				#calculate expectation for unlabeled document.
+				self.doc2topic=self.__expectation(self.word_matrix)
+				if self.fix_labeled_doc is False:
+					self.labeled_doc2topic=self.__expectation(self.labeled_word_matrix)
+	
+				word_matrix=np.concatenate((self.labeled_word_matrix,self.word_matrix),axis=0)
+				doc2topic=np.concatenate((self.labeled_doc2topic,self.doc2topic),axis=0)
+	
+				self.__maximization(word_matrix,doc2topic)
+			
+	def __maximization(self,word_matrix,doc2topic):
+		#doc2topic of size doc_num*topic.
+
+		#new topic sampling probability.
+		assert np.all((doc2topic.sum(axis=0)+self.alpha-1)>=0) and ((word_matrix.shape[0]+self.topic_num*(self.alpha-1))!=0)  ,"vectorizer error or reset alpha"
+		
+		self.topic=(doc2topic.sum(axis=0)+(self.alpha-1))/(word_matrix.shape[0]+self.topic_num*(self.alpha-1))
+
+
+		#new topic to word probability.
+		#word_matrix and doc2topic should have the same shape[0].
+		word_matrix=word_matrix.reshape(word_matrix.shape[0],-1,self.word_num)
+		self.topic2word=(self.alpha-1)+(doc2topic.reshape(word_matrix.shape[0],self.topic_num,-1)*word_matrix).sum(axis=0)
+		assert np.all(self.topic2word>=0) and np.all(self.topic2word.sum(axis=1)!=0) ,"vectorizer error or reset alpha"
 		self.topic2word=self.topic2word/(self.topic2word.sum(axis=1,keepdims=True))
 
 	def __expectation(self,word_matrix):
 		
-		#calculate the probability of documents belonging to a topic conditioned on current self.topic and self.topic2word.
+		#calculate the conditional probability of documents belonging to a topic using current self.topic and self.topic2word.
 
 		assert(word_matrix.shape[1]==self.word_num)
-		#initalize to 1.
-		doc2topic=np.full([word_matrix.shape[0],self.topic_num],1.)
 
-		#More efficient. It is the same as the lines quoted below.
-		doc2topic=doc2topic*self.topic
-		doc2word=word_matrix.reshape(word_matrix.shape[0],self.word_num,-1)
+		#probability of generating words in a document.
+		word_prob=word_matrix.reshape(word_matrix.shape[0],self.word_num,-1)
 		topic2word=self.topic2word.transpose([1,0]).reshape(-1,self.word_num,self.topic_num)
-		doc2word=np.power(topic2word,doc2word)
+		word_prob=np.power(topic2word,word_prob)
+		#divide by a common number to improve floating point precision. Would not change the result.
+		word_prob=word_prob/(word_prob.mean(axis=2,keepdims=True)+10**-200)
+		word_prob=np.prod(word_prob,axis=1)
 		
-		#normalize to improve floating point precision
-		doc2word=doc2word/(doc2word.mean(axis=2,keepdims=True))
-		
-		doc2word=np.prod(doc2word,axis=1)
-		doc2topic*=doc2word
-		doc2topic=doc2topic/(doc2topic.sum(axis=1,keepdims=True)+10**-200)
+		#probability of generating a specific topic.
+		doc2topic=np.full([word_matrix.shape[0],self.topic_num],1.)
+		doc2topic=doc2topic*self.topic
+
+		#entire probability	
+		doc2topic*=word_prob
+		#If sum is 0 then assign value 1 to every topic, resulting in uniform distribution.
+		doc2topic[(doc2topic.sum(axis=1,keepdims=True)==0).repeat(self.topic_num,axis=1)]=1
+		doc2topic=doc2topic/doc2topic.sum(axis=1,keepdims=True)
 		
 		"""
 		for i_doc,doc in enumerate(self.word_matrix):
 			for i_topic in range(self.topic_num):
-				doc2topic[i_doc][i_topic]*=self.model2topic[i_topic]
+				doc2topic[i_doc][i_topic]*=self.topic[i_topic]
 				for i_word,word in enumerate(doc):
-					doc2topic[i_doc][i_topic]*=self.topic2word[i_topic][word]
+					doc2topic[i_doc][i_topic]*=(self.topic2word[i_topic][i_word])**word
 		doc2topic=doc2topic/doc2topic.sum(dim=1)
 		"""
 		
-		#return size word_matrix.shape[0]*topic
+		#return of size word_matrix.shape[0]*self.topic_num
 		return doc2topic
 
-	def inference(self,word_matrix):
+	"""
+	def predict(self,word_matrix):
 		doc2topic=self.__expectation(word_matrix)
+		#doc2topic is a probability distribution over topic.
+		#return the topic with highest probabily.
 		return doc2topic.argmax(axis=1)
+	"""
+	def predict(self,word_matrix):
+		#return the distribution directly.
+		doc2topic=self.__expectation(word_matrix)
+		#doc2topic is a probability distribution over topic.
+		return doc2topic
 
-	def get_topic(self,word_num=3):
+	def get_topic(self,show_word=3):
 		topic=[]
 		for i in range(self.topic_num):
-			topic.append([self.show_word[o] for o in self.topic2word[i].argsort()[:-word_num-1:-1]])
+			topic.append([self.show_word[o] for o in self.topic2word[i].argsort()[:-show_word-1:-1]])
 		return topic
 
-
-def main():
-	#preprocess your file according to your file format. You can also perform other prepocessing technique in advance.
-	word_matrix,show_word=read_file("../aaai.json")
-	
-	#word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_string*len(words). show_word is a list of string(word).
-	model=mixture_of_unigram(word_matrix,show_word,topic_num=10)
-	model.train(iteration=100)
-
-	for i in range(10):
-		print(model.get_topic(word_num=10)[i])
-	
-	print(model.inference(word_matrix)[:10])
-
-if __name__=="__main__":
-	main()
