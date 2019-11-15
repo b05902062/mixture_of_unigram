@@ -65,7 +65,7 @@ class mixture_of_unigram():
 	
 			elif self.labeled_word_matrix is None and self.word_matrix is not None:
 				#only unlabeled self.word_matrix has document. Unsupervised learning might not do well.
-				self.doc2topic=self.__expecation(self.word_matrix)
+				self.doc2topic=self.__expectation(self.word_matrix)
 				self.__maximization(self.word_matrix,self.doc2topic)
 	
 	

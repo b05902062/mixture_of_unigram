@@ -4,6 +4,8 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import CountVectorizer
 import unicodedata
 import re
+from mixture_of_unigram import mixture_of_unigram
+
 def read_file(file_name):
 	with open(file_name,"r") as f:
 	  aaai=json.load(f)
@@ -32,47 +34,28 @@ def read_file(file_name):
 
 def main():
 	#preprocess your file according to your file format. You can also perform other prepocessing technique in advance.
-	word_matrix,show_word=read_file("../aaai.json")
+	word_matrix,show_word=read_file("./aaai.json")
 	
 
 	#initialization
 	#show_word is a list of string(word).
-	model=mixture_of_unigram(show_word,topic_num=10)
+	model=mixture_of_unigram(show_word,topic_num=10,fix_labeled_doc=False,alpha=1.1)
 
-	#add labeled document
-	#labeled_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-	#topic is a list(len=word_matrix.shape[0]) of int(topic) the document belongs in.
-	model.add_labeled_doc(labeled_word_matrix,topic)
-
-	#When there is only labeled data. We run EM algorithm one time and it will have the best solution.
-	model.train(iteration=1)
 
 	#add unlabeled document
 	#unlabeled_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-	#now there are labeled and unlabeled documents in our model.
-	model.add_unlabeled_doc(unlabeled_word_matrix)
+	#This is a unsupervised classification, which would not be good. Maybe running it in a hirarchical way may produce some good result.
+	model.add_unlabeled_doc(word_matrix)
 
 
 	#We can run EM algorithm more times this time.
-	model.train(iteration=100)
+	model.train(iteration=30)
 
 	#show 10 words that best represent each topic.
 	print(model.get_topic(show_word=10))
 	
 	#predict which topic does these document belongs to.
-	print(model.predict(word_matrix).argmax(axis=1))
-	
-	#if you want to get a raw distribution over topic for each document for further analysis.
-	print(model.predict(word_matrix))
-
-	#you can also access the distribution over topic of the documents in the model.
-	print(model.labeled_doc2topic)
-	print(model.doc2topic) #this one for unlabeled document.
-	
-	#get the topic these document belongs to is the same.
-	print(model.labeled_doc2topic.argmax(axis=1))
-	print(model.doc2topic.argmax(axis=1)) #this one for unlabeled document.
-
+	print(model.predict(word_matrix).argmax(axis=1)[:10])
 
 if __name__=="__main__":
 	main()
