@@ -46,7 +46,7 @@ class mixture_of_unigram():
 			self.word_matrix=word_matrix.copy()
 		else:
 			assert(word_matrix.shape[1]==self.labeled_word_matrix.shape[1])
-			self.labeled_word_matrix=np.concatenate((self.labeled_word_matrix,word_matrix),axis=0)
+			self.word_matrix=np.concatenate((self.word_matrix,word_matrix),axis=0)
 
 	def train(self,iteration=10):
 		for i in range(iteration):
