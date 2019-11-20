@@ -5,7 +5,8 @@ By Wang Zihmin 2019
 This is a implementation of mixture of unigram topic model. Original paper is at: https://www.ri.cmu.edu/pub_files/pub1/nigam_k_1999_1/nigam_k_1999_1.pdf
 
 ### Usage: 
-See example files for its usage.
+You need to have numpy and sklearn installed to run the program. 
+See example files for its usage. You can run them directly to see the message printed.
 
 
 

@@ -19,6 +19,7 @@ test_doc=['banana banana down email email france']
 #let's calculate the word count. you can use some tools to do this. or do it yourself. we use CountVectorizer here.
 
 vectorizer=CountVectorizer()
+#documents are all 2d array specifying the count of each word in each document. They are of size #_of_document*len(# of words). Each row correspond to a document. Each column corresponds to the word in the same column in show_word.
 v_lab_doc=vectorizer.fit_transform(lab_doc).toarray()
 show_word=vectorizer.get_feature_names()
 v_unlab_doc=vectorizer.transform(unlab_doc).toarray()
@@ -34,13 +35,13 @@ print("test word count\n",v_test_doc)
 #create our mixure of unigram model.
 #show_word is a list of string(word).
 #you can allow labeled document to be relabeled by specifying fix_labeled_doc as False. This could help if there are some incorrect labels.
-#you can change prior(smoothing) by specifying a value for alpha, it should be greater or equal than 1.
+#you can change prior(smoothing) by specifying a value for alpha, it should be greater or equal than 1. Default value is 2.
 model=mixture_of_unigram(show_word,topic_num=3,fix_labeled_doc=False,alpha=1.2)
 
 
 #add labeled document
-#labeled_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-#topic is a list(len=word_matrix.shape[0]) of int(topic) the document belongs in.
+#v_lab_doc is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
+#topic is a list(len=v_lab_doc.shape[0]) of int(topic index) the document belongs in.
 model.add_labeled_doc(v_lab_doc,topic_list)
 
 #When there is only labeled data. We run EM algorithm one time and it will have the best solution.
@@ -48,16 +49,16 @@ model.train(iteration=1)
 
 
 #add unlabeled document
-#unlabeled_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-#now there are labeled and unlabeled documents in our model.
-#You can train them together. Augment training data by unlabeled data.
+#v_unlab_doc is a 2d array specifying the count of each word in each document. It is of size #_of_documents*len(show_word).
+#now there are labeled and unlabeled documents in our model. They will be trained together. Augment training data by unlabeled data.
 #training without labeled data is also possible. But it may suffer from bad initialization. Maybe combining unsupervised training with some other ideas like running it in a hierarchical way could help.
 model.add_unlabeled_doc(v_unlab_doc)
 
 #We can run EM algorithm more times this time.
 model.train(iteration=100)
 
-#predict which topic does these document belongs to.
+#use trained model to predict which topic do new documents belong to as below.
+#v_test_doc is also a 2d array specifying the count of each word in each document. It is of size #_of_documents_in_test_doc*len(show_word).
 print("test predict topic\n",model.predict(v_test_doc).argmax(axis=1))
 
 #if you want to get a raw distribution over topic for each document for further analysis.

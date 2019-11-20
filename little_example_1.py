@@ -12,6 +12,8 @@ test_doc=['banana banana down email email france']
 #let's calculate the word count. you can use some tools to do this. or do it yourself. we use CountVectorizer here.
 
 vectorizer=CountVectorizer()
+#v_lab_doc and v_test_doc are both 2d array specifying the count of each word in each document. They are of size #_of_document*len(# of words).
+#Each row correspond to a document. Each column corresponds to the word in the same column in show_word.
 v_lab_doc=vectorizer.fit_transform(lab_doc).toarray()
 show_word=vectorizer.get_feature_names()
 v_test_doc=vectorizer.transform(test_doc).toarray()
@@ -26,16 +28,16 @@ model=mixture_of_unigram(show_word,topic_num=3)
 
 
 #add labeled document
-#labeled_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-#topic is a list(len=word_matrix.shape[0]) of int(topic) the document belongs in.
+#v_lab_doc is a 2d array specifying the count of each word in each document. It is of size #_of_document*len(# of different words).
+#topic is a list(len=v_lab_doc.shape[0]) of int(topic index) the document belongs in.
 model.add_labeled_doc(v_lab_doc,topic_list)
 
 #When there is only labeled data. We run EM algorithm one time and it will have the best solution.
 model.train(iteration=1)
 
 
-#test_word_matrix is a 2d array specifying the count of each word in each document. It is of size #_of_sentences*len(show_word).
-#use trained model to predict which topic does new document belongs to.
+#use trained model to predict which topic do new documents belong to as below.
+#v_test_doc is also a 2d array specifying the count of each word in each document. It is of size #_of_documents_in_test_doc*len(show_word).
 print("predict topic",model.predict(v_test_doc).argmax(axis=1))
 
 
